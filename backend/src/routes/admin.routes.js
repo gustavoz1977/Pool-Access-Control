@@ -1,105 +1,132 @@
 import express from 'express';
-import { authMiddleware, adminMiddleware } from '../middleware/auth.middleware.js';
-import authService from '../services/authService.js';
+import authMiddleware from '../middleware/auth.middleware.js';
+import blobStorageService from '../services/blobStorageService.js';
 
 const router = express.Router();
 
-router.use(authMiddleware);
-router.use(adminMiddleware);
+// Middleware: Solo admin
+const adminOnly = (req, res, next) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Acceso denegado. Solo administradores.' });
+  }
+  next();
+};
 
-router.get('/users', async (req, res) => {
+// GET /api/admin/users
+router.get('/users', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const users = await authService.getAllUsers();
-    res.json({ success: true, data: users, count: users.length });
+    const users = await blobStorageService.readFile('users.json');
+    res.json({ data: users.users || [] });
   } catch (err) {
-    res.status(500).json({ success: false, error: 'FETCH_ERROR', message: err.message });
+    console.error('Error fetching users:', err);
+    res.status(500).json({ error: 'Error al obtener usuarios' });
   }
 });
 
-router.get('/users/:id', async (req, res) => {
+// POST /api/admin/users
+router.post('/users', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const userId = parseInt(req.params.id);
-    const user = await authService.getUserById(userId);
-    res.json({ success: true, data: user });
+    const { email, password, full_name, phone } = req.body;
+
+    if (!email || !password || !full_name) {
+      return res.status(400).json({ error: 'Email, contraseña y nombre son requeridos' });
+    }
+
+    // Leer usuarios existentes
+    const data = await blobStorageService.readFile('users.json');
+    const users = data.users || [];
+
+    // Verificar que el email no exista
+    if (users.find(u => u.email === email)) {
+      return res.status(400).json({ error: 'El email ya existe' });
+    }
+
+    // Crear nuevo usuario
+    const newUser = {
+      id: Math.max(...users.map(u => u.id), 0) + 1,
+      email,
+      password_hash: password, // En producción, hashear con bcrypt
+      full_name,
+      phone: phone || null,
+      role: 'user',
+      status: 'active',
+      created_at: new Date().toISOString(),
+      last_login_at: null,
+    };
+
+    users.push(newUser);
+
+    // ✅ GUARDAR EN BLOB STORAGE
+    await blobStorageService.writeFile('users.json', { users });
+
+    res.status(201).json({ data: newUser });
   } catch (err) {
-    res.status(404).json({ success: false, error: 'USER_NOT_FOUND', message: err.message });
+    console.error('Error creating user:', err);
+    res.status(500).json({ error: 'Error al crear usuario' });
   }
 });
 
-router.put('/users/:id', async (req, res) => {
+// PUT /api/admin/users/:id
+router.put('/users/:id', authMiddleware, adminOnly, async (req, res) => {
   try {
     const userId = parseInt(req.params.id);
     const { full_name, phone, status } = req.body;
-    const updates = {};
-    if (full_name) updates.full_name = full_name;
-    if (phone) updates.phone = phone;
-    if (status) updates.status = status;
-    const user = await authService.updateUser(userId, updates);
-    res.json({ success: true, message: 'Usuario actualizado', data: user });
-  } catch (err) {
-    res.status(400).json({ success: false, error: 'UPDATE_ERROR', message: err.message });
-  }
-});
 
-router.delete('/users/:id', async (req, res) => {
-  try {
-    const userId = parseInt(req.params.id);
-    if (userId === req.user.sub) {
-      return res.status(400).json({
-        success: false,
-        error: 'CANNOT_DELETE_SELF',
-        message: 'No puedes eliminarte a ti mismo',
-      });
+    const data = await blobStorageService.readFile('users.json');
+    const users = data.users || [];
+
+    const user = users.find(u => u.id === userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
     }
-    await authService.deleteUser(userId);
-    res.json({ success: true, message: 'Usuario eliminado' });
+
+    if (full_name) user.full_name = full_name;
+    if (phone !== undefined) user.phone = phone;
+    if (status) user.status = status;
+
+    // ✅ GUARDAR EN BLOB STORAGE
+    await blobStorageService.writeFile('users.json', { users });
+
+    res.json({ data: user });
   } catch (err) {
-    res.status(400).json({ success: false, error: 'DELETE_ERROR', message: err.message });
+    console.error('Error updating user:', err);
+    res.status(500).json({ error: 'Error al actualizar usuario' });
   }
 });
 
-router.post('/users/:id/status', async (req, res) => {
+// DELETE /api/admin/users/:id
+router.delete('/users/:id', authMiddleware, adminOnly, async (req, res) => {
   try {
     const userId = parseInt(req.params.id);
-    const { status } = req.body;
-    const validStatuses = ['active', 'suspended', 'inactive'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        error: 'INVALID_STATUS',
-        message: `Status debe ser uno de: ${validStatuses.join(', ')}`,
-      });
+
+    const data = await blobStorageService.readFile('users.json');
+    let users = data.users || [];
+
+    const initialLength = users.length;
+    users = users.filter(u => u.id !== userId);
+
+    if (users.length === initialLength) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
     }
-    const user = await authService.updateUser(userId, { status });
-    res.json({
-      success: true,
-      message: `Usuario ${status === 'active' ? 'activado' : 'desactivado'}`,
-      data: user,
-    });
+
+    // ✅ GUARDAR EN BLOB STORAGE
+    await blobStorageService.writeFile('users.json', { users });
+
+    res.json({ success: true });
   } catch (err) {
-    res.status(400).json({ success: false, error: 'STATUS_ERROR', message: err.message });
+    console.error('Error deleting user:', err);
+    res.status(500).json({ error: 'Error al eliminar usuario' });
   }
 });
 
-router.get('/access-logs', async (req, res) => {
+// GET /api/admin/access-logs
+router.get('/access-logs', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const skip = parseInt(req.query.skip) || 0;
-    const limit = parseInt(req.query.limit) || 100;
-    const logs = await authService.getAllAccessLogs(skip, limit);
-    res.json({ success: true, data: logs });
+    const data = await blobStorageService.readFile('access-logs.json');
+    res.json({ data });
   } catch (err) {
-    res.status(500).json({ success: false, error: 'FETCH_ERROR', message: err.message });
-  }
-});
-
-router.get('/users/:id/access-logs', async (req, res) => {
-  try {
-    const userId = parseInt(req.params.id);
-    const limit = parseInt(req.query.limit) || 50;
-    const logs = await authService.getUserAccessLogs(userId, limit);
-    res.json({ success: true, data: logs, count: logs.length });
-  } catch (err) {
-    res.status(500).json({ success: false, error: 'FETCH_ERROR', message: err.message });
+    console.error('Error fetching logs:', err);
+    res.status(500).json({ error: 'Error al obtener logs' });
   }
 });
 
