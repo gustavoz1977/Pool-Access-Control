@@ -11,24 +11,22 @@ export default function Dashboard() {
   const [stats, setStats] = useState({ totalUsers: 0, activeUsers: 0, logins: 0, accessAttempts: 0 });
   const [activityData, setActivityData] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch user profile
         const profileResponse = await authAPI.getProfile();
         setUser(profileResponse.data.data);
 
-        // Fetch all users
         const usersResponse = await adminAPI.listUsers();
         const users = usersResponse.data.data || [];
+        setAllUsers(users);
 
-        // Fetch access logs
         const logsResponse = await adminAPI.getAccessLogs();
         const logs = logsResponse.data.data.logs || [];
 
-        // Calculate stats
         const activeCount = users.filter(u => u.status === 'active').length;
         const loginCount = logs.filter(l => l.access_type === 'login').length;
         const accessCount = logs.filter(l => l.access_type === 'access').length;
@@ -40,7 +38,6 @@ export default function Dashboard() {
           accessAttempts: accessCount,
         });
 
-        // Activity data for chart (últimos 7 días)
         const last7Days = [];
         for (let i = 6; i >= 0; i--) {
           const date = new Date();
@@ -54,7 +51,6 @@ export default function Dashboard() {
         }
         setActivityData(last7Days);
 
-        // Recent activity
         const recent = logs
           .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
           .slice(0, 5)
@@ -70,7 +66,7 @@ export default function Dashboard() {
           });
         setRecentActivity(recent);
       } catch (err) {
-        console.error('Error fetching data:', err);
+        console.error('Error:', err);
         navigate('/login');
       } finally {
         setLoading(false);
@@ -111,72 +107,135 @@ export default function Dashboard() {
           <p>Sistema de gestión de acceso a alberca comunitaria</p>
         </div>
 
-        {/* Estadísticas */}
-        <div className="stats-grid">
-          <StatsCard 
-            icon="👥"
-            label="Total de Usuarios"
-            value={stats.totalUsers}
-            color="#667eea"
-          />
-          <StatsCard 
-            icon="🟢"
-            label="Usuarios Activos"
-            value={stats.activeUsers}
-            color="#4caf50"
-          />
-          <StatsCard 
-            icon="🔓"
-            label="Logins"
-            value={stats.logins}
-            color="#2196f3"
-          />
-          <StatsCard 
-            icon="📍"
-            label="Accesos a Piscina"
-            value={stats.accessAttempts}
-            color="#ff9800"
-          />
-        </div>
+        <div className="dashboard-layout">
+          {/* Columna Izquierda */}
+          <div className="dashboard-left">
+            {/* Stats Cards */}
+            <div className="stats-grid">
+              <StatsCard 
+                icon="👥"
+                label="Total de Usuarios"
+                value={stats.totalUsers}
+                color="#667eea"
+              />
+              <StatsCard 
+                icon="🟢"
+                label="Usuarios Activos"
+                value={stats.activeUsers}
+                color="#4caf50"
+              />
+              <StatsCard 
+                icon="🔓"
+                label="Logins"
+                value={stats.logins}
+                color="#2196f3"
+              />
+              <StatsCard 
+                icon="📍"
+                label="Accesos a Piscina"
+                value={stats.accessAttempts}
+                color="#ff9800"
+              />
+            </div>
 
-        {/* Gráfico de Actividad */}
-        {activityData.length > 0 && <ActivityChart data={activityData} />}
+            {/* Gráfico */}
+            {activityData.length > 0 && <ActivityChart data={activityData} />}
 
-        {/* Actividad Reciente */}
-        <div className="recent-activity">
-          <h3>⏱️ Actividad Reciente</h3>
-          {recentActivity.length > 0 ? (
-            <ul className="activity-list">
-              {recentActivity.map(item => (
-                <li key={item.id} className="activity-item">
-                  <div className="activity-icon">{item.type.split(' ')[0]}</div>
-                  <div className="activity-details">
-                    <p className="activity-name">{item.userName}</p>
-                    <p className="activity-time">{item.time}</p>
-                  </div>
-                  <span className="activity-badge">{item.type}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p style={{ color: '#999' }}>No hay actividad reciente</p>
-          )}
-        </div>
-
-        {/* Admin Tools */}
-        {user?.role === 'admin' && (
-          <div className="admin-section">
-            <h2>🔧 Herramientas de Administrador</h2>
-            <div className="admin-buttons">
-              <button className="admin-button" onClick={() => navigate('/admin/users')}>
-                👥 Gestionar Usuarios
-              </button>
-              <button className="admin-button" onClick={() => navigate('/admin/logs')}>
-                📊 Ver Logs Detallados
-              </button>
+            {/* Actividad Reciente */}
+            <div className="recent-activity">
+              <h3>⏱️ Actividad Reciente</h3>
+              {recentActivity.length > 0 ? (
+                <ul className="activity-list">
+                  {recentActivity.map(item => (
+                    <li key={item.id} className="activity-item">
+                      <div className="activity-icon">{item.type.split(' ')[0]}</div>
+                      <div className="activity-details">
+                        <p className="activity-name">{item.userName}</p>
+                        <p className="activity-time">{item.time}</p>
+                      </div>
+                      <span className="activity-badge">{item.type}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p style={{ color: '#999' }}>No hay actividad reciente</p>
+              )}
             </div>
           </div>
-        )}
+
+          {/* Columna Derecha */}
+          <div className="dashboard-right">
+            {/* Información de Cuenta */}
+            <div className="info-card">
+              <h3>👤 Tu Información</h3>
+              <div className="info-row">
+                <span className="info-label">Email:</span>
+                <span className="info-value">{user?.email}</span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Rol:</span>
+                <span className="info-value">
+                  {user?.role === 'admin' ? '🔐 Administrador' : '👥 Usuario'}
+                </span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Estado:</span>
+                <span className="info-value" style={{ color: user?.status === 'active' ? '#4caf50' : '#f44336' }}>
+                  {user?.status === 'active' ? '🟢 Activo' : '🔴 Inactivo'}
+                </span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Teléfono:</span>
+                <span className="info-value">{user?.phone || 'No registrado'}</span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Miembro desde:</span>
+                <span className="info-value">{new Date(user?.created_at).toLocaleDateString()}</span>
+              </div>
+            </div>
+
+            {/* Listado de Usuarios */}
+            <div className="users-list-card">
+              <h3>👥 Usuarios Registrados ({allUsers.length})</h3>
+              <div className="users-mini-list">
+                {allUsers.slice(0, 5).map(u => (
+                  <div key={u.id} className="user-mini-item">
+                    <div className="user-avatar">{u.full_name.charAt(0).toUpperCase()}</div>
+                    <div className="user-mini-info">
+                      <p className="user-mini-name">{u.full_name}</p>
+                      <p className="user-mini-email">{u.email}</p>
+                    </div>
+                    <span className={`user-status status-${u.status}`}>
+                      {u.status === 'active' ? '🟢' : '🔴'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {allUsers.length > 5 && (
+                <p style={{ textAlign: 'center', color: '#667eea', cursor: 'pointer', marginTop: '1rem' }}
+                   onClick={() => navigate('/admin/users')}>
+                  Ver todos ({allUsers.length} usuarios) →
+                </p>
+              )}
+            </div>
+
+            {/* Admin Tools */}
+            {user?.role === 'admin' && (
+              <div className="quick-actions">
+                <h3>⚡ Acciones Rápidas</h3>
+                <button className="action-btn" onClick={() => navigate('/admin/users')}>
+                  👥 Gestionar Usuarios
+                </button>
+                <button className="action-btn" onClick={() => navigate('/admin/logs')}>
+                  📊 Ver Logs Detallados
+                </button>
+                <button className="action-btn" onClick={() => navigate('/profile')}>
+                  ⚙️ Configuración
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </main>
     </div>
   );
