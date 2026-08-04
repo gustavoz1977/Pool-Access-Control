@@ -5,8 +5,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (production only)
+RUN npm ci --omit=dev
 
 # Copy app code
 COPY src ./src
@@ -14,5 +14,5 @@ COPY src ./src
 # Expose port
 EXPOSE 3001
 
-# Start app
+# Start server
 CMD ["node", "src/server.js"]
