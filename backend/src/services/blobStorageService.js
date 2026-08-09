@@ -34,24 +34,10 @@ class BlobStorageService {
   }
 
   async ensureFilesExist() {
-    const adminData = {
-      users: [
-        {
-          id: 1,
-          email: 'admin@pool.local',
-          password_hash: 'Admin@123!',
-          full_name: 'Administrador',
-          phone: null,
-          role: 'admin',
-          status: 'active',
-          created_at: new Date().toISOString(),
-          last_login_at: null,
-        },
-      ],
-    };
+    if (!this.containerClient) return;
 
     const files = [
-      { name: 'users.json', data: adminData },
+      { name: 'users.json', data: { users: [] } },
       { name: 'access-logs.json', data: { logs: [] } },
       { name: 'user-sessions.json', data: { sessions: [] } },
     ];
@@ -71,7 +57,6 @@ class BlobStorageService {
         console.log(`📝 Creando ${file.name}...`);
         const jsonString = JSON.stringify(file.data, null, 2);
         
-        // Use uploadBlockBlob on containerClient
         await this.containerClient.uploadBlockBlob(file.name, jsonString, jsonString.length);
         console.log(`✅ ${file.name} creado`);
       } catch (err) {
@@ -81,7 +66,7 @@ class BlobStorageService {
   }
 
   async readFile(fileName) {
-    if (this.useMockMode) return this.getMockData(fileName);
+    if (this.useMockMode || !this.containerClient) return this.getMockData(fileName);
 
     try {
       const blobClient = this.containerClient.getBlobClient(fileName);
@@ -101,7 +86,11 @@ class BlobStorageService {
   }
 
   async writeFile(fileName, data) {
-    if (this.useMockMode) return;
+    // ¡¡¡CAMBIO CRÍTICO: SIEMPRE INTENTA GUARDAR, INCLUSO EN MOCK MODE!!!
+    if (!this.containerClient) {
+      console.warn(`⚠️ No Azure connection for ${fileName}, using mock`);
+      return;
+    }
 
     try {
       const jsonString = JSON.stringify(data, null, 2);
