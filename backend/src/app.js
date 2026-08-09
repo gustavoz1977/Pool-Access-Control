@@ -32,10 +32,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+console.log('📡 Registrando rutas...');
 app.use('/api/auth', authRoutes);
+console.log('✅ Rutas de auth registradas');
+
 app.use('/api/admin', adminRoutes);
+console.log('✅ Rutas de admin registradas');
 
 app.use((req, res) => {
+  console.log(`❌ Ruta no encontrada: ${req.method} ${req.path}`);
   res.status(404).json({
     success: false,
     error: 'NOT_FOUND',
@@ -44,7 +49,7 @@ app.use((req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  console.log('[ERROR]', err);
+  console.error('[ERROR]', err);
   const status = err.status || 500;
   const message = err.message || 'Internal Server Error';
   res.status(status).json({
