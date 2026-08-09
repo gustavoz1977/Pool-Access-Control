@@ -5,7 +5,7 @@ import morgan from 'morgan';
 import 'dotenv/config';
 import authRoutes from './routes/auth.routes.js';
 import adminRoutes from './routes/admin.routes.js';
-import blobStorageService from './services/blobStorageService.js';
+import dbService from './services/dbService.js';
 
 const app = express();
 
@@ -20,9 +20,8 @@ app.use(morgan(process.env.LOG_FORMAT || 'combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-blobStorageService.initializeContainer().catch(err => {
-  console.warn('⚠️  Blob Storage initialization warning:', err.message);
-});
+// Initialize database
+dbService.initialize();
 
 app.get('/api/health', (req, res) => {
   res.json({
@@ -32,15 +31,10 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-console.log('📡 Registrando rutas...');
 app.use('/api/auth', authRoutes);
-console.log('✅ Rutas de auth registradas');
-
 app.use('/api/admin', adminRoutes);
-console.log('✅ Rutas de admin registradas');
 
 app.use((req, res) => {
-  console.log(`❌ Ruta no encontrada: ${req.method} ${req.path}`);
   res.status(404).json({
     success: false,
     error: 'NOT_FOUND',
@@ -56,7 +50,6 @@ app.use((err, req, res, next) => {
     success: false,
     error: err.code || 'INTERNAL_ERROR',
     message: message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 });
 
